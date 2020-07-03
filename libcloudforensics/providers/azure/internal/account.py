@@ -345,7 +345,7 @@ class AZAccount:
     created = True
     return instance, created
 
-  def ListVMSizes(self, region: Optional[str] = None) -> List[Dict[str, Any]]:
+  def ListInstanceTypes(self, region: Optional[str] = None) -> List[Dict[str, Any]]:
     """Returns a list of available VM sizes for a given region.
 
     Args:
@@ -384,7 +384,7 @@ class AZAccount:
     Raises:
       ValueError: If no instance type matches the requested configuration.
     """
-    vm_sizes = self.ListVMSizes()
+    vm_sizes = self.ListInstanceTypes()
     for size in vm_sizes:
       if size['CPU'] == cpu_cores and size['Memory'] == memory_in_mb:
         instance_type = size['Name']  # type: str
