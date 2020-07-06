@@ -322,7 +322,7 @@ class AZAccount:
             },
             'networkProfile': {
                 'networkInterfaces': [{'id': self._CreateNetworkInterfaceForVM(
-                    vm_name, self.default_region)}]
+                    vm_name, self.default_region, force_create=True)}]
             }
         }
     }  # type: Dict[str, Any]
@@ -402,17 +402,21 @@ class AZAccount:
 
   def _CreateNetworkInterfaceForVM(self,
                                    vm_name: str,
-                                   region: Optional[str] = None) -> str:
+                                   region: Optional[str] = None,
+                                   force_create: bool = False) -> str:
     """Create a network interface and returns its ID.
 
-    This is quite cumbersome and in-elegant but it seems like it is necessary
-    to create VMs from the SDK.
+    This is necessary when creating a VM from the SDK.
     See https://docs.microsoft.com/en-us/azure/virtual-machines/windows/python
 
     Args:
       vm_name (str): The name of the VM to create the network interface for.
       region (str): Optional. The region in which to create the network
           interface. Default uses default_region of the AZAccount object.
+      force_create (bool): Optional. If set to True, then if a network
+          element (ip address, virtual network, subnet or network interface)
+          with the same name already exists, then attempt to delete it prior to
+          re-creating it. Default is False.
 
     Returns:
       str: The id of the created network interface.
@@ -424,44 +428,114 @@ class AZAccount:
     if not vm_name:
       raise ValueError('vm_name cannot be None.')
 
-    if not region:
-      region = self.default_region
+    network_interface_name = '{0:s}-nic'.format(vm_name)
+    ip_config_name = '{0:s}-ipconfig'.format(vm_name)
+
+    # pylint: disable=unbalanced-tuple-unpacking
+    public_ip, _, subnet = self._CreateNetworkInterfaceElements(
+        vm_name, region=region, force_create=force_create)
+    # pylint: enable=unbalanced-tuple-unpacking
+
+    creation_data = {
+        'location': region or self.default_region,
+        'ip_configurations': [{
+            'name': ip_config_name,
+            'public_ip_address': public_ip,
+            'subnet': {
+                'id': subnet.id
+            }
+        }]
+    }
 
     try:
-      request_ip = self.network_client.public_ip_addresses.create_or_update(
+      if force_create:
+        # We do not need to worry about the existence of the network interface
+        # prior to deleting it, as Azure sends a 200 OK back when trying to
+        # delete a non-existent network interface.
+        request = self.network_client.network_interfaces.delete(
+            self.default_resource_group_name, network_interface_name)
+        request.wait()  # Wait for deletion to complete
+      request = self.network_client.network_interfaces.create_or_update(
           self.default_resource_group_name,
-          '{0:s}-public-ip'.format(vm_name),
-          {'location': region, 'public_ip_allocation_method': 'Dynamic'}
-      )
-      public_ip = request_ip.result()
-      request_vnet = self.network_client.virtual_networks.create_or_update(
-          self.default_resource_group_name,
-          '{0:s}-vnet'.format(vm_name),
-          {'location': region,
-           'address_space': {'address_prefixes': ['10.0.0.0/16']}}
-      )
-      vnet = request_vnet.result()
-      request_subnet = self.network_client.subnets.create_or_update(
-          self.default_resource_group_name,
-          vnet.name,
-          '{0:s}-subnet'.format(vm_name),
-          {'address_prefix': '10.0.0.0/24'}
-      )
-      subnet = request_subnet.result()
-      request_nic = self.network_client.network_interfaces.create_or_update(
-          self.default_resource_group_name,
-          '{0:s}-nic'.format(vm_name),
-          {'location': region,
-           'ip_configurations': [{
-               'name': '{0:s}-ipconfig'.format(vm_name),
-               'public_ip_address': public_ip,
-               'subnet': {'id': subnet.id}
-           }]}
-      )
-      nic = request_nic.result()
+          network_interface_name,
+          creation_data)
     except CloudError as exception:
       raise RuntimeError('Could not create network interface: {0:s}'.format(
-          str(exception)
-      ))
-    network_interface_id = nic.id  # type: str
+          str(exception)))
+
+    network_interface_id = request.result().id  # type: str
     return network_interface_id
+
+  def _CreateNetworkInterfaceElements(
+      self,
+      vm_name: str,
+      region: Optional[str] = None,
+      force_create: bool = False) -> Tuple[Any, ...]:
+    """Creates required elements for creating a network interface.
+
+    Args:
+      vm_name (str): The name of the VM to create the network interface
+          elements for.
+      region (str): Optional. The region in which to create the elements.
+          Default uses default_region of the AZAccount object.
+      force_create (bool): Optional. If set to True, then if elements (ip
+          address, virtual network, subnet) with the same name exist
+          already, attempt to delete it prior to re-creating it. Default is
+          False.
+
+    Returns:
+      Tuple[Any, Any, Any]: A tuple containing a public IP address object,
+          a virtual network object and a subnet object.
+
+    Raises:
+      RuntimeError: If the elements could not be created.
+    """
+
+    public_ip_name = '{0:s}-public-ip'.format(vm_name)
+    vnet_name = '{0:s}-vnet'.format(vm_name)
+    subnet_name = '{0:s}-subnet'.format(vm_name)
+
+    client_to_creation_data = {
+        self.network_client.public_ip_addresses: {
+            'resource_group_name': self.default_resource_group_name,
+            'public_ip_address_name': public_ip_name,
+            'parameters': {
+                'location': region or self.default_region,
+                'public_ip_allocation_method': 'Dynamic'
+            }
+        },
+        self.network_client.virtual_networks: {
+            'resource_group_name': self.default_resource_group_name,
+            'virtual_network_name': vnet_name,
+            'parameters': {
+                'location': region or self.default_region,
+                'address_space': {'address_prefixes': ['10.0.0.0/16']}
+            }
+        },
+        self.network_client.subnets: {
+            'resource_group_name': self.default_resource_group_name,
+            'virtual_network_name': vnet_name,
+            'subnet_name': subnet_name,
+            'subnet_parameters': {
+                'address_prefix': '10.0.0.0/24'
+            }
+        }
+    }  # type: Dict[str, Any]
+
+    result = []
+    try:
+      for client in client_to_creation_data:
+        if force_create:
+          # We do not need to worry about the existence of the network interface
+          # prior to deleting it, as Azure sends a 200 OK back when trying to
+          # delete a non-existent network interface.
+          request = common.ExecuteRequest(
+              client, 'delete', client_to_creation_data[client])[0]
+          request.wait()  # Wait for deletion to complete
+        request = common.ExecuteRequest(
+            client, 'create_or_update', client_to_creation_data[client])[0]
+        result.append(request.result())
+    except CloudError as exception:
+      raise RuntimeError('Could not create network interface elements: '
+                         '{0:s}'.format(str(exception)))
+    return tuple(result)
