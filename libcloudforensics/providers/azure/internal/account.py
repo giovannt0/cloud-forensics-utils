@@ -428,6 +428,9 @@ class AZAccount:
     if not vm_name:
       raise ValueError('vm_name cannot be None.')
 
+    if not region:
+      region = self.default_region
+
     network_interface_name = '{0:s}-nic'.format(vm_name)
     ip_config_name = '{0:s}-ipconfig'.format(vm_name)
 
@@ -437,7 +440,7 @@ class AZAccount:
     # pylint: enable=unbalanced-tuple-unpacking
 
     creation_data = {
-        'location': region or self.default_region,
+        'location': region,
         'ip_configurations': [{
             'name': ip_config_name,
             'public_ip_address': public_ip,
@@ -491,6 +494,9 @@ class AZAccount:
       RuntimeError: If the elements could not be created.
     """
 
+    if not region:
+      region = self.default_region
+
     public_ip_name = '{0:s}-public-ip'.format(vm_name)
     vnet_name = '{0:s}-vnet'.format(vm_name)
     subnet_name = '{0:s}-subnet'.format(vm_name)
@@ -500,7 +506,7 @@ class AZAccount:
             'resource_group_name': self.default_resource_group_name,
             'public_ip_address_name': public_ip_name,
             'parameters': {
-                'location': region or self.default_region,
+                'location': region,
                 'public_ip_allocation_method': 'Dynamic'
             }
         },
@@ -508,7 +514,7 @@ class AZAccount:
             'resource_group_name': self.default_resource_group_name,
             'virtual_network_name': vnet_name,
             'parameters': {
-                'location': region or self.default_region,
+                'location': region,
                 'address_space': {'address_prefixes': ['10.0.0.0/16']}
             }
         },
