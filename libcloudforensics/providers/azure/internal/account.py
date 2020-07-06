@@ -14,7 +14,6 @@
 # limitations under the License.
 """Represents an Azure account."""
 import base64
-import sshpubkeys
 from time import sleep
 from typing import Optional, Dict, List, Tuple, Any
 
@@ -25,6 +24,7 @@ from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.compute.v2016_04_30_preview.models import DiskCreateOption
 from msrestazure.azure_exceptions import CloudError
+from sshpubkeys import SSHKey, InvalidKeyError
 # pylint: enable=import-error
 
 from libcloudforensics.providers.azure.internal import compute, common
@@ -277,8 +277,8 @@ class AZAccount:
 
     # Validate SSH public key format
     try:
-      sshpubkeys.SSHKey(ssh_public_key, strict=True).parse()
-    except sshpubkeys.InvalidKeyError as exception:
+      SSHKey(ssh_public_key, strict=True).parse()
+    except InvalidKeyError as exception:
       raise RuntimeError('The provided public SSH key is invalid: '
                          '{0:s}'.format(str(exception)))
 
@@ -351,7 +351,8 @@ class AZAccount:
     created = True
     return instance, created
 
-  def ListInstanceTypes(self, region: Optional[str] = None) -> List[Dict[str, Any]]:
+  def ListInstanceTypes(self,
+                        region: Optional[str] = None) -> List[Dict[str, Any]]:
     """Returns a list of available VM sizes for a given region.
 
     Args:
