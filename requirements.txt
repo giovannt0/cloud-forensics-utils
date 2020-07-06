@@ -9,5 +9,7 @@ azure-core
 azure-identity
 azure-mgmt-compute
 azure-mgmt-resource
+azure-mgmt-network
 msrest
 msrestazure
+sshpubkeys

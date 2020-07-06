@@ -88,10 +88,10 @@ def StartAnalysisVm(
     resource_group_name: str,
     vm_name: str,
     boot_disk_size: int,
+    ssh_public_key: str,
     cpu_cores: int = 4,
     memory_in_mb: int = 8192,
     attach_disks: Optional[List[str]] = None,
-    ssh_public_key: Optional[str] = None,
     tags: Optional[Dict[str, str]] = None) -> Tuple['compute.AZVirtualMachine', bool]:  # pylint: disable=line-too-long
   """Start a virtual machine for analysis purposes.
 
@@ -106,12 +106,12 @@ def StartAnalysisVm(
         analysis vm.
     vm_name (str): The name for the virtual machine.
     boot_disk_size (int): The size of the analysis VM boot disk (in GB).
+    ssh_public_key (str): A SSH public key data to associate with the
+        VM. This must be provided as otherwise the VM will not be
+        accessible.
     cpu_cores (int): Number of CPU cores for the analysis VM.
     memory_in_mb (int): The memory size (in MB) for the analysis VM.
     attach_disks (List[str]): Optional. List of disk names to attach to the VM.
-    ssh_public_key (str): Optional. A SSH public key data to associate
-        with the VM. If none provided, then a newly created VM will not
-        be accessible.
     tags (Dict[str, str]): Optional. A dictionary of tags to add to the
         instance, for example {'TicketID': 'xxx'}. An entry for the instance
         name is added by default.
@@ -128,7 +128,7 @@ def StartAnalysisVm(
       boot_disk_size,
       cpu_cores,
       memory_in_mb,
-      ssh_public_key=ssh_public_key,
+      ssh_public_key,
       tags=tags)
 
   for disk_name in (attach_disks or []):
