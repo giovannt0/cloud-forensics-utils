@@ -272,7 +272,7 @@ class TestAccount(unittest.TestCase):
     mock_ssh_parse.return_value = None
 
     vm, created = FAKE_ACCOUNT.GetOrCreateAnalysisVm(
-      FAKE_INSTANCE.name, 1, 4, 8192, '')
+        FAKE_INSTANCE.name, 1, 4, 8192, '')
     mock_get_instance.assert_called_with(FAKE_INSTANCE.name)
     mock_vm.assert_not_called()
     self.assertIsInstance(vm, compute.AZVirtualMachine)
@@ -307,12 +307,14 @@ class TestAccount(unittest.TestCase):
   @typing.no_type_check
   def testGetInstanceType(self, mock_list_instance_types):
     """Test that the instance type given a configuration is correct."""
+    # pylint: disable=protected-access
     mock_list_instance_types.return_value = MOCK_LIST_VM_SIZES
     instance_type = FAKE_ACCOUNT._GetInstanceType(4, 8192)
     self.assertEqual('fake-vm-type', instance_type)
 
     with self.assertRaises(ValueError):
       FAKE_ACCOUNT._GetInstanceType(666, 666)
+    # pylint: enable=protected-access
 
 
 class TestCommon(unittest.TestCase):

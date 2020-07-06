@@ -30,13 +30,14 @@ def ListInstances(args: 'argparse.Namespace') -> None:
     args (argparse.Namespace): Arguments from ArgumentParser.
   """
 
-  az_account = account.AZAccount(args.subscription_id)
+  az_account = account.AZAccount(
+      args.subscription_id, args.default_resource_group_name)
   instances = az_account.ListInstances(
       resource_group_name=args.resource_group_name)
 
   print('Instances found:')
-  for instance in instances.values():
-    boot_disk = instance.GetBootDisk().name
+  for instance in instances:
+    boot_disk = instances[instance].GetBootDisk().name
     print('Name: {0:s}, Boot disk: {1:s}'.format(instance, boot_disk))
 
 
@@ -47,7 +48,8 @@ def ListDisks(args: 'argparse.Namespace') -> None:
     args (argparse.Namespace): Arguments from ArgumentParser.
   """
 
-  az_account = account.AZAccount(args.subscription_id)
+  az_account = account.AZAccount(
+      args.subscription_id, args.default_resource_group_name)
   disks = az_account.ListDisks(resource_group_name=args.resource_group_name)
 
   print('Disks found:')
@@ -63,7 +65,37 @@ def CreateDiskCopy(args: 'argparse.Namespace') -> None:
   """
   print('Starting disk copy...')
   disk_copy = forensics.CreateDiskCopy(args.subscription_id,
+                                       args.default_resource_group_name,
                                        args.instance_name,
                                        args.disk_name,
                                        args.disk_type)
   print('Done! Disk {0:s} successfully created.'.format(disk_copy.name))
+
+
+def StartAnalysisVm(args: 'argparse.Namespace') -> None:
+  """Start forensic analysis VM.
+
+  Args:
+    args (argparse.Namespace): Arguments from ArgumentParser.
+  """
+  attach_disks = []
+  if args.attach_disks:
+    attach_disks = args.attach_disks.split(',')
+    # Check if attach_disks parameter exists and if there
+    # are any empty entries.
+    if not (attach_disks and all(elements for elements in attach_disks)):
+      print('error: parameter --attach_disks: {0:s}'.format(args.attach_disks))
+      return
+
+  print('Starting analysis VM...')
+  vm = forensics.StartAnalysisVm(args.subscription_id,
+                                 args.default_resource_group_name,
+                                 args.instance_name,
+                                 int(args.disk_size),
+                                 args.ssh_public_key,
+                                 cpu_cores=int(args.cpu_cores),
+                                 memory_in_mb=int(args.memory_in_mb),
+                                 attach_disks=attach_disks)
+
+  print('Analysis VM started.')
+  print('Name: {0:s}, Started: {1:s}'.format(vm[0].name, str(vm[1])))

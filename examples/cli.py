@@ -34,7 +34,8 @@ PROVIDER_TO_FUNC = {
     'az': {
         'copydisk': az_cli.CreateDiskCopy,
         'listinstances': az_cli.ListInstances,
-        'listdisks': az_cli.ListDisks
+        'listdisks': az_cli.ListDisks,
+        'startvm': az_cli.StartAnalysisVm,
     },
     'gcp': {
         'copydisk': gcp_cli.CreateDiskCopy,
@@ -160,6 +161,9 @@ def Main() -> None:
 
   # Azure parser options
   az_parser.add_argument('subscription_id', help='The Azure subscription ID.')
+  az_parser.add_argument('default_resource_group_name',
+                         help='The default resource group name in which to '
+                              'create resources')
   az_subparsers = az_parser.add_subparsers()
   AddParser('az', az_subparsers, 'listinstances',
             'List instances in Azure subscription.',
@@ -176,7 +180,7 @@ def Main() -> None:
   AddParser('az', az_subparsers, 'copydisk', 'Create an Azure disk copy.',
             args=[
                 ('--instance_name', 'The instance name.', None),
-                ('--disk_name', 'The name of the disk to copy. If none '
+                ('--disk_name', 'The disk name of the disk to copy. If none '
                                 'specified, then --instance_name must be '
                                 'specified and the boot disk of the Azure '
                                 'instance will be copied.', None),
@@ -184,6 +188,17 @@ def Main() -> None:
                                 'Can be Standard_LRS, Premium_LRS, '
                                 'StandardSSD_LRS, or UltraSSD_LRS.',
                  None)
+            ])
+  AddParser('az', az_subparsers, 'startvm', 'Start a forensic analysis VM.',
+            args=[
+                ('instance_name', 'Name of the Azure instance to create.', ''),
+                ('ssh_public_key', 'A SSH public key to register with the VM. '
+                                   'e.g. ssh-rsa AAdddbbh...', ''),
+                ('--disk_size', 'Size of disk in GB.', '50'),
+                ('--cpu_cores', 'Instance CPU core count.', '4'),
+                ('--memory_in_mb', 'Instance amount of RAM memory.', '8192'),
+                ('--attach_disks', 'Comma seperated list of disk names '
+                                   'to attach.', None)
             ])
 
   # GCP parser options
