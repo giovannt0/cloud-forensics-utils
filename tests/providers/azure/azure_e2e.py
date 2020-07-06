@@ -16,6 +16,7 @@
 
 import typing
 import unittest
+from time import sleep
 
 from msrestazure.azure_exceptions import CloudError  # pylint: disable=import-error
 
@@ -34,6 +35,7 @@ class EndToEndTest(unittest.TestCase):
     "subscription_id": xxx,  # required
     "resource_group_name": xxx,  # required
     "instance_name": xxx,  # required
+    "ssh_public_key": ssh-rsa xxx,  # required
     "disk_name": xxx,  # optional
   }
 
@@ -52,19 +54,22 @@ class EndToEndTest(unittest.TestCase):
   def setUpClass(cls):
     try:
       project_info = utils.ReadProjectInfo(
-          ['subscription_id', 'resource_group_name', 'instance_name'])
+          ['subscription_id', 'resource_group_name', 'instance_name',
+           'ssh_public_key'])
     except (OSError, RuntimeError, ValueError) as exception:
       raise unittest.SkipTest(str(exception))
     cls.subscription_id = project_info['subscription_id']
     cls.resource_group_name = project_info['resource_group_name']
     cls.instance_to_analyse = project_info['instance_name']
+    cls.ssh_public_key = project_info['ssh_public_key']
     cls.disk_to_copy = project_info.get('disk_name', None)
     cls.az = account.AZAccount(cls.subscription_id, cls.resource_group_name)
     cls.analysis_vm_name = 'new-vm-for-analysis'
     cls.analysis_vm, _ = forensics.StartAnalysisVm(cls.subscription_id,
                                                    cls.resource_group_name,
                                                    cls.analysis_vm_name,
-                                                   50)
+                                                   50,
+                                                   cls.ssh_public_key)
     cls.disks = []  # List of AZDisks for test cleanup
 
   @typing.no_type_check
@@ -127,6 +132,7 @@ class EndToEndTest(unittest.TestCase):
         self.resource_group_name,
         self.analysis_vm_name,
         50,
+        self.ssh_public_key,
         attach_disks=[disk_copy.name]
     )
 
@@ -137,6 +143,7 @@ class EndToEndTest(unittest.TestCase):
     )
     self.assertEqual(instance.name, self.analysis_vm.name)
     self.assertIn(disk_copy.name, self.analysis_vm.ListDisks())
+    self._StoreDiskForCleanup(self.analysis_vm.GetBootDisk())
 
   @typing.no_type_check
   def _StoreDiskForCleanup(self, disk):
@@ -151,7 +158,28 @@ class EndToEndTest(unittest.TestCase):
   @typing.no_type_check
   def tearDownClass(cls):
     # Delete the instance
-    # TODO: delete instance AND all the network interface stuff
+    LOGGER.info('Deleting instance: {0:s}.'.format(cls.analysis_vm.name))
+    request = cls.az.compute_client.virtual_machines.delete(
+        cls.analysis_vm.resource_group_name, cls.analysis_vm.name
+    )
+    while not request.done():
+      sleep(5)  # Wait 5 seconds before checking vm deletion status again
+    LOGGER.info('Instance {0:s} successfully deleted.'.format(
+        cls.analysis_vm.name))
+    # Delete the network interface and associated artifacts created for the
+    # analysis VM
+    LOGGER.info('Deleting network artifacts...')
+    cls.az.network_client.network_interfaces.delete(
+        cls.resource_group_name, '{0:s}-nic'.format(cls.analysis_vm_name))
+    cls.az.network_client.subnets.delete(
+        cls.resource_group_name,
+        '{0:s}-vnet'.format(cls.analysis_vm_name),
+        '{0:s}-subnet'.format(cls.analysis_vm_name))
+    cls.az.network_client.virtual_networks.delete(
+        cls.resource_group_name, '{0:s}-vnet'.format(cls.analysis_vm_name))
+    cls.az.network_client.public_ip_addresses.delete(
+        cls.resource_group_name, '{0:s}-public-ip'.format(
+            cls.analysis_vm_name))
     # Delete the disks
     for disk in cls.disks:
       LOGGER.info('Deleting disk: {0:s}.'.format(disk.name))

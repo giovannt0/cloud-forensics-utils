@@ -14,6 +14,7 @@
 # limitations under the License.
 """Represents an Azure account."""
 import base64
+import sshpubkeys
 from time import sleep
 from typing import Optional, Dict, List, Tuple, Any
 
@@ -238,8 +239,8 @@ class AZAccount:
       boot_disk_size: int,
       cpu_cores: int,
       memory_in_mb: int,
+      ssh_public_key: str,
       packages: Optional[List[str]] = None,
-      ssh_public_key: Optional[str] = None,
       tags: Optional[Dict[str, str]] = None) -> Tuple[compute.AZVirtualMachine, bool]:  # pylint: disable=line-too-long
     """Get or create a new virtual machine for analysis purposes.
 
@@ -248,10 +249,10 @@ class AZAccount:
           boot_disk_size (int): The size of the analysis VM boot volume (in GB).
           cpu_cores (int): Number of CPU cores for the analysis VM.
           memory_in_mb (int): The memory size (in MB) for the analysis VM.
+          ssh_public_key (str): A SSH public key data to associate with the
+              VM. This must be provided as otherwise the VM will not be
+              accessible.
           packages (List[str]): Optional. List of packages to install in the VM.
-          ssh_public_key (str): Optional. A SSH public key data to associate
-              with the VM. If none provided, then a newly created VM will not
-              be accessible.
           tags (Dict[str, str]): Optional. A dictionary of tags to add to the
               instance, for example {'TicketID': 'xxx'}. An entry for the
               instance name is added by default.
@@ -273,6 +274,13 @@ class AZAccount:
         return instance, created
     except RuntimeError:
       pass
+
+    # Validate SSH public key format
+    try:
+      sshpubkeys.SSHKey(ssh_public_key, strict=True).parse()
+    except sshpubkeys.InvalidKeyError as exception:
+      raise RuntimeError('The provided public SSH key is invalid: '
+                         '{0:s}'.format(str(exception)))
 
     instance_type = self._GetInstanceType(cpu_cores, memory_in_mb)
     startup_script = utils.ReadStartupScript()
@@ -303,7 +311,14 @@ class AZAccount:
                 'computerName': vm_name,
                 # Azure requires the startup script to be sent as a b64 string
                 'customData': base64.b64encode(
-                    str.encode(startup_script)).decode('utf-8')
+                    str.encode(startup_script)).decode('utf-8'),
+                'linuxConfiguration': {
+                    'ssh': {
+                        'publicKeys': [{
+                            'path': '/home/AzureUser/.ssh/authorized_keys',
+                            'keyData': ssh_public_key}]
+                    }
+                }
             },
             'networkProfile': {
                 'networkInterfaces': [{'id': self._CreateNetworkInterfaceForVM(
@@ -311,15 +326,6 @@ class AZAccount:
             }
         }
     }  # type: Dict[str, Any]
-
-    if ssh_public_key:
-      creation_data['properties']['osProfile']['linuxConfiguration'] = {
-          'ssh': {
-              'publicKeys': [{
-                  'path': '/home/AzureUser/.ssh/authorized_keys',
-                  'keyData': ssh_public_key}]
-          }
-      }
 
     if tags:
       creation_data['tags'] = tags

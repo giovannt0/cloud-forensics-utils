@@ -250,6 +250,7 @@ class TestAccount(unittest.TestCase):
         mock.ANY,
         sku='StandardSSD_LRS')
 
+  @mock.patch('sshpubkeys.SSHKey.parse')
   @mock.patch('libcloudforensics.scripts.utils.ReadStartupScript')
   @mock.patch('libcloudforensics.providers.azure.internal.account.AZAccount.GetInstance')
   @mock.patch('libcloudforensics.providers.azure.internal.account.AZAccount._GetInstanceType')
@@ -261,15 +262,17 @@ class TestAccount(unittest.TestCase):
                                 mock_nic,
                                 mock_instance_type,
                                 mock_get_instance,
-                                mock_script):
+                                mock_script,
+                                mock_ssh_parse):
     """Test that a VM is created or retrieved if it already exists."""
     mock_instance_type.return_value = 'fake-instance-type'
     mock_nic.return_value = 'fake-network-interface-id'
     mock_get_instance.return_value = FAKE_INSTANCE
     mock_script.return_value = ''
+    mock_ssh_parse.return_value = None
 
     vm, created = FAKE_ACCOUNT.GetOrCreateAnalysisVm(
-      FAKE_INSTANCE.name, 1, 4, 8192)
+      FAKE_INSTANCE.name, 1, 4, 8192, '')
     mock_get_instance.assert_called_with(FAKE_INSTANCE.name)
     mock_vm.assert_not_called()
     self.assertIsInstance(vm, compute.AZVirtualMachine)
@@ -282,7 +285,7 @@ class TestAccount(unittest.TestCase):
     mock_get_instance.side_effect = RuntimeError()
     mock_vm.return_value.result.return_value = MOCK_ANALYSIS_INSTANCE
     vm, created = FAKE_ACCOUNT.GetOrCreateAnalysisVm(
-        'fake-analysis-vm-name', 1, 4, 8192)
+        'fake-analysis-vm-name', 1, 4, 8192, '')
     mock_get_instance.assert_called_with('fake-analysis-vm-name')
     mock_vm.assert_called()
     self.assertIsInstance(vm, compute.AZVirtualMachine)
