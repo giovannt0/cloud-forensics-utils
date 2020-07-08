@@ -160,7 +160,6 @@ def Main() -> None:
             ])
 
   # Azure parser options
-  az_parser.add_argument('subscription_id', help='The Azure subscription ID.')
   az_parser.add_argument('default_resource_group_name',
                          help='The default resource group name in which to '
                               'create resources')
@@ -186,8 +185,19 @@ def Main() -> None:
                                 'instance will be copied.', None),
                 ('--disk_type', 'The SKU name for the disk to create. '
                                 'Can be Standard_LRS, Premium_LRS, '
-                                'StandardSSD_LRS, or UltraSSD_LRS.',
-                 None)
+                                'StandardSSD_LRS, or UltraSSD_LRS.', None),
+                ('--region', 'The region in which to create the disk copy. If '
+                             'not provided, the disk copy will be created in '
+                             'the "eastus" region.', None),
+                ('--src_profile', 'The Azure profile information to use as '
+                                  'source account for the disk copy. Default '
+                                  'will look into environment variables to '
+                                  'authenticate the requests.', None),
+                ('--dst_profile', 'The Azure profile information to use as '
+                                  'destination account for the disk copy. If '
+                                  'not provided, the default behavior is to '
+                                  'use the same destination profile as the '
+                                  'source profile.', None)
             ])
   AddParser('az', az_subparsers, 'startvm', 'Start a forensic analysis VM.',
             args=[
@@ -197,8 +207,14 @@ def Main() -> None:
                 ('--disk_size', 'Size of disk in GB.', '50'),
                 ('--cpu_cores', 'Instance CPU core count.', '4'),
                 ('--memory_in_mb', 'Instance amount of RAM memory.', '8192'),
+                ('--region', 'The region in which to create the VM. If not '
+                             'provided, the VM will be created in the '
+                             '"eastus" region.', None),
                 ('--attach_disks', 'Comma seperated list of disk names '
-                                   'to attach.', None)
+                                   'to attach.', None),
+                ('--dst_profile', 'The Azure profile information to use as '
+                                  'destination account for the vm creation.',
+                 None)
             ])
 
   # GCP parser options
