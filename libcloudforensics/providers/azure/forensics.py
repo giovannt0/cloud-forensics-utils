@@ -23,15 +23,15 @@ if TYPE_CHECKING:
 
 
 def CreateDiskCopy(
-    subscription_id: str,
     resource_group_name: str,
     instance_name: Optional[str] = None,
     disk_name: Optional[str] = None,
-    disk_type: str = 'Standard_LRS') -> 'compute.AZDisk':
+    disk_type: str = 'Standard_LRS',
+    src_profile: Optional[str] = None,
+    dst_profile: Optional[str] = None) -> 'compute.AZDisk':
   """Creates a copy of an Azure Compute Disk.
 
   Args:
-    subscription_id (str): The Azure subscription ID to use.
     resource_group_name (str): The resource group in which to create the disk
         copy.
     instance_name (str): Optional. Instance name of the instance using the
@@ -43,6 +43,17 @@ def CreateDiskCopy(
     disk_type (str): Optional. The sku name for the disk to create. Can be
           Standard_LRS, Premium_LRS, StandardSSD_LRS, or UltraSSD_LRS. The
           default value is Standard_LRS.
+    src_profile (str): Optional. The name of the source profile to use for the
+        disk copy, i.e. the account information of the Azure account that holds
+        the disk. For more information on profiles, see GetCredentials()
+        in libcloudforensics.providers.azure.internal.common.py. If not
+        provided, credentials will be gathered from environment variables.
+    dst_profile (str): Optional. The name of the destination profile to use for
+        the disk copy. The disk will be copied into the account linked to
+        this profile. If not provided, the default behavior is that the
+        destination profile is the same as the source profile.
+        For more information on profiles, see GetCredentials() in
+        libcloudforensics.providers.azure.internal.common.py
 
   Returns:
     AZDisk: An Azure Compute Disk object.
@@ -56,18 +67,36 @@ def CreateDiskCopy(
     raise ValueError(
         'You must specify at least one of [instance_name, disk_name].')
 
-  az_account = account.AZAccount(subscription_id, resource_group_name)
+  src_account = account.AZAccount(
+      resource_group_name, profile_name=src_profile)
+  dst_account = account.AZAccount(
+      resource_group_name, profile_name=(dst_profile or src_profile))
 
   try:
     if disk_name:
-      disk_to_copy = az_account.GetDisk(disk_name)
+      disk_to_copy = src_account.GetDisk(disk_name)
     elif instance_name:
-      instance = az_account.GetInstance(instance_name)
+      instance = src_account.GetInstance(instance_name)
       disk_to_copy = instance.GetBootDisk()
     common.LOGGER.info('Disk copy of {0:s} started...'.format(
         disk_to_copy.name))
     snapshot = disk_to_copy.Snapshot()
-    new_disk = az_account.CreateDiskFromSnapshot(
+
+    if dst_account.subscription_id not in src_account.ListSubscriptionIDs():
+      # Create a link to download the snapshot
+      snapshot_uri = snapshot.GrantAccessAndGetURI()
+      # Make a snapshot copy in the destination account from the link
+      new_disk = dst_account.CreateDiskFromSnapshotURI(
+          snapshot,
+          snapshot_uri,
+          disk_name_prefix=common.DEFAULT_DISK_COPY_PREFIX,
+          disk_type=disk_type)
+      # Revoke download link and delete the initial copy
+      snapshot.RevokeAccessURI()
+      snapshot.Delete()
+      return new_disk
+
+    new_disk = dst_account.CreateDiskFromSnapshot(
         snapshot,
         disk_name_prefix=common.DEFAULT_DISK_COPY_PREFIX,
         disk_type=disk_type)
@@ -84,7 +113,6 @@ def CreateDiskCopy(
 
 
 def StartAnalysisVm(
-    subscription_id: str,
     resource_group_name: str,
     vm_name: str,
     boot_disk_size: int,
@@ -92,7 +120,9 @@ def StartAnalysisVm(
     cpu_cores: int = 4,
     memory_in_mb: int = 8192,
     attach_disks: Optional[List[str]] = None,
-    tags: Optional[Dict[str, str]] = None) -> Tuple['compute.AZVirtualMachine', bool]:  # pylint: disable=line-too-long
+    tags: Optional[Dict[str, str]] = None,
+    dst_profile: Optional[str] = None
+    ) -> Tuple['compute.AZVirtualMachine', bool]:
   """Start a virtual machine for analysis purposes.
 
   Look for an existing Azure virtual machine with name vm_name. If found,
@@ -101,7 +131,6 @@ def StartAnalysisVm(
   new vm is created, you should provide the ssh_public_key parameter.
 
   Args:
-    subscription_id (str): The Azure subscription ID to use.
     resource_group_name (str): The resource group in which to create the
         analysis vm.
     vm_name (str): The name for the virtual machine.
@@ -115,13 +144,19 @@ def StartAnalysisVm(
     tags (Dict[str, str]): Optional. A dictionary of tags to add to the
         instance, for example {'TicketID': 'xxx'}. An entry for the instance
         name is added by default.
+    dst_profile (str): The name of the destination profile to use for the vm
+        creation, i.e. the account information of the Azure account in which
+        to create the vm. For more information on profiles,
+        see GetCredentials() in
+        libcloudforensics.providers.azure.internal.common.py
 
   Returns:
     Tuple[AZVirtualMachine, bool]: a tuple with a virtual machine object
         and a boolean indicating if the virtual machine was created or not.
   """
 
-  az_account = account.AZAccount(subscription_id, resource_group_name)
+  az_account = account.AZAccount(resource_group_name,
+                                 profile_name=dst_profile)
 
   analysis_vm, created = az_account.GetOrCreateAnalysisVm(
       vm_name,

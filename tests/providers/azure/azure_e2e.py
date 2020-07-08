@@ -32,7 +32,6 @@ class EndToEndTest(unittest.TestCase):
   To run these tests, add your project information to a project_info.json file:
 
   {
-    "subscription_id": xxx,  # required
     "resource_group_name": xxx,  # required
     "instance_name": xxx,  # required
     "ssh_public_key": ssh-rsa xxx,  # required
@@ -54,19 +53,16 @@ class EndToEndTest(unittest.TestCase):
   def setUpClass(cls):
     try:
       project_info = utils.ReadProjectInfo(
-          ['subscription_id', 'resource_group_name', 'instance_name',
-           'ssh_public_key'])
+          ['resource_group_name', 'instance_name', 'ssh_public_key'])
     except (OSError, RuntimeError, ValueError) as exception:
       raise unittest.SkipTest(str(exception))
-    cls.subscription_id = project_info['subscription_id']
     cls.resource_group_name = project_info['resource_group_name']
     cls.instance_to_analyse = project_info['instance_name']
     cls.ssh_public_key = project_info['ssh_public_key']
     cls.disk_to_copy = project_info.get('disk_name', None)
-    cls.az = account.AZAccount(cls.subscription_id, cls.resource_group_name)
+    cls.az = account.AZAccount(cls.resource_group_name)
     cls.analysis_vm_name = 'new-vm-for-analysis'
-    cls.analysis_vm, _ = forensics.StartAnalysisVm(cls.subscription_id,
-                                                   cls.resource_group_name,
+    cls.analysis_vm, _ = forensics.StartAnalysisVm(cls.resource_group_name,
                                                    cls.analysis_vm_name,
                                                    50,
                                                    cls.ssh_public_key)
@@ -80,7 +76,6 @@ class EndToEndTest(unittest.TestCase):
     """
 
     disk_copy = forensics.CreateDiskCopy(
-        self.subscription_id,
         self.resource_group_name,
         instance_name=self.instance_to_analyse
         # disk_name=None by default, boot disk of instance will be copied
@@ -103,7 +98,6 @@ class EndToEndTest(unittest.TestCase):
       return
 
     disk_copy = forensics.CreateDiskCopy(
-        self.subscription_id,
         self.resource_group_name,
         disk_name=self.disk_to_copy)
     # The disk should be present in Azure
@@ -121,14 +115,12 @@ class EndToEndTest(unittest.TestCase):
     """
 
     disk_copy = forensics.CreateDiskCopy(
-        self.subscription_id,
         self.resource_group_name,
         disk_name=self.disk_to_copy)
     self._StoreDiskForCleanup(disk_copy)
 
     # Create and start the analysis VM and attach the disk
     self.analysis_vm, _ = forensics.StartAnalysisVm(
-        self.subscription_id,
         self.resource_group_name,
         self.analysis_vm_name,
         50,
@@ -193,3 +185,5 @@ class EndToEndTest(unittest.TestCase):
 
 if __name__ == '__main__':
   unittest.main()
+
+  # TODO: Add e2e tests for cross region copies / cross subscription IDs

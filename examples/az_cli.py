@@ -30,8 +30,7 @@ def ListInstances(args: 'argparse.Namespace') -> None:
     args (argparse.Namespace): Arguments from ArgumentParser.
   """
 
-  az_account = account.AZAccount(
-      args.subscription_id, args.default_resource_group_name)
+  az_account = account.AZAccount(args.default_resource_group_name)
   instances = az_account.ListInstances(
       resource_group_name=args.resource_group_name)
 
@@ -48,8 +47,7 @@ def ListDisks(args: 'argparse.Namespace') -> None:
     args (argparse.Namespace): Arguments from ArgumentParser.
   """
 
-  az_account = account.AZAccount(
-      args.subscription_id, args.default_resource_group_name)
+  az_account = account.AZAccount(args.default_resource_group_name)
   disks = az_account.ListDisks(resource_group_name=args.resource_group_name)
 
   print('Disks found:')
@@ -64,11 +62,12 @@ def CreateDiskCopy(args: 'argparse.Namespace') -> None:
     args (argparse.Namespace): Arguments from ArgumentParser.
   """
   print('Starting disk copy...')
-  disk_copy = forensics.CreateDiskCopy(args.subscription_id,
-                                       args.default_resource_group_name,
+  disk_copy = forensics.CreateDiskCopy(args.default_resource_group_name,
                                        args.instance_name,
                                        args.disk_name,
-                                       args.disk_type)
+                                       args.disk_type,
+                                       args.src_profile,
+                                       args.dst_profile)
   print('Done! Disk {0:s} successfully created.'.format(disk_copy.name))
 
 
@@ -88,14 +87,14 @@ def StartAnalysisVm(args: 'argparse.Namespace') -> None:
       return
 
   print('Starting analysis VM...')
-  vm = forensics.StartAnalysisVm(args.subscription_id,
-                                 args.default_resource_group_name,
+  vm = forensics.StartAnalysisVm(args.default_resource_group_name,
                                  args.instance_name,
                                  int(args.disk_size),
                                  args.ssh_public_key,
                                  cpu_cores=int(args.cpu_cores),
                                  memory_in_mb=int(args.memory_in_mb),
-                                 attach_disks=attach_disks)
+                                 attach_disks=attach_disks,
+                                 dst_profile=args.dst_profile)
 
   print('Analysis VM started.')
   print('Name: {0:s}, Started: {1:s}'.format(vm[0].name, str(vm[1])))
