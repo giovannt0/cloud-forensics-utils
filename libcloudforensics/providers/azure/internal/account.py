@@ -292,7 +292,7 @@ class AZAccount:
     # Create a temporary Azure account storage to import the snapshot
     storage_account_name = hashlib.sha1(
         snapshot.resource_id.encode('utf-8')).hexdigest()[:23]
-    storage_account_url = 'https://{}.blob.core.windows.net'.format(
+    storage_account_url = 'https://{0:s}.blob.core.windows.net'.format(
         storage_account_name)
     storage_account_id, storage_account_access_key = self._CreateStorageAccount(
         storage_account_name, region=region)

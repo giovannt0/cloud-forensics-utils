@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Tests for the azure module."""
+import os
 import typing
 import unittest
 import mock
@@ -117,6 +118,23 @@ MOCK_ANALYSIS_INSTANCE = mock.Mock(
     zones=['fake-zone']
 )
 MOCK_ANALYSIS_INSTANCE.name = 'fake-analysis-vm-name'
+
+MOCK_LIST_IDS = [
+    mock.Mock(subscription_id='fake-subscription-id-1'),
+    mock.Mock(subscription_id='fake-subscription-id-2')
+]
+
+MOCK_STORAGE_ACCOUNT = mock.Mock(id='fakestorageid')
+
+MOCK_LIST_KEYS = mock.Mock(
+    keys=[mock.Mock(key_name='key1', value='fake-key-value')])
+
+JSON_FILE = 'scripts/test_credentials.json'
+STARTUP_SCRIPT = 'scripts/startup.sh'
+
+MOCK_BLOB_PROPERTIES = mock.Mock()
+MOCK_BLOB_PROPERTIES.copy = mock.Mock()
+MOCK_BLOB_PROPERTIES.copy.status = 'success'
 
 
 class TestAccount(unittest.TestCase):
@@ -254,6 +272,51 @@ class TestAccount(unittest.TestCase):
         mock.ANY,
         sku='StandardSSD_LRS')
 
+  @mock.patch('azure.storage.blob._container_client.ContainerClient.create_container')
+  @mock.patch('azure.storage.blob._generated._azure_blob_storage.AzureBlobStorage.__init__')
+  @mock.patch('azure.storage.blob._blob_service_client.BlobServiceClient.get_blob_client')
+  @mock.patch('azure.storage.blob._blob_service_client.BlobServiceClient.get_container_client')
+  @mock.patch('azure.storage.blob._blob_service_client.BlobServiceClient.__init__')
+  @mock.patch('libcloudforensics.providers.azure.internal.account.AZAccount._DeleteStorageAccount')
+  @mock.patch('libcloudforensics.providers.azure.internal.account.AZAccount._CreateStorageAccount')
+  @mock.patch('azure.mgmt.compute.v2020_05_01.operations._disks_operations.DisksOperations.create_or_update')
+  @typing.no_type_check
+  def testCreateDiskFromSnapshotUri(self,
+                                    mock_create_disk,
+                                    mock_create_storage_account,
+                                    mock_delete_storage_account,
+                                    mock_blob_client,
+                                    mock_get_container,
+                                    mock_get_blob_client,
+                                    mock_blob_storage,
+                                    mock_create_container):
+    """Test that a disk can be created from a snapshot URI."""
+    mock_create_disk.return_value.done.return_value = True
+    mock_create_disk.return_value.result.return_value = MOCK_DISK_COPY
+    mock_create_storage_account.return_value = ('fake-account-id', 'fake-key')
+    mock_blob_client.return_value = None
+    mock_blob_storage.return_value = None
+    mock_get_container.return_value = mock.Mock()
+    mock_create_container.return_value = None
+    blob_properties = mock_get_blob_client.return_value.get_blob_properties
+    blob_properties.return_value = mock.Mock(copy=mock.Mock(status='success'))
+    mock_delete_storage_account.return_value = None
+
+    disk_from_snapshot_uri = FAKE_ACCOUNT.CreateDiskFromSnapshotURI(
+        FAKE_SNAPSHOT, 'fake-snapshot-uri')
+    #  hashlib.sha1('/a/b/c/fake-resource-group/fake_snapshot_name'.encode(
+    #     'utf-8')).hexdigest()[:23] = bff00b08549ba8b975b2e70
+    mock_create_storage_account.assert_called_with(
+        'bff00b08549ba8b975b2e70', region='fake-region')
+    self.assertIsInstance(disk_from_snapshot_uri, compute.AZDisk)
+    self.assertEqual(
+        'fake_snapshot_name_f4c186ac_copy', disk_from_snapshot_uri.name)
+    mock_create_disk.assert_called_with(
+        FAKE_SNAPSHOT.resource_group_name,
+        'fake_snapshot_name_f4c186ac_copy',
+        mock.ANY,
+        sku='Standard_LRS')
+
   @mock.patch('sshpubkeys.SSHKey.parse')
   @mock.patch('libcloudforensics.scripts.utils.ReadStartupScript')
   @mock.patch('libcloudforensics.providers.azure.internal.account.AZAccount.GetInstance')
@@ -320,6 +383,30 @@ class TestAccount(unittest.TestCase):
       FAKE_ACCOUNT._GetInstanceType(666, 666)
     # pylint: enable=protected-access
 
+  @mock.patch('azure.mgmt.resource.subscriptions.v2019_11_01.operations._subscriptions_operations.SubscriptionsOperations.list')
+  @typing.no_type_check
+  def testListSubscriptionIDs(self, mock_list):
+    """Test that subscription IDs are correctly listed"""
+    mock_list.return_value = MOCK_LIST_IDS
+    subscription_ids = FAKE_ACCOUNT.ListSubscriptionIDs()
+    self.assertEqual(2, len(subscription_ids))
+    self.assertEqual('fake-subscription-id-1', subscription_ids[0])
+
+  @mock.patch('azure.mgmt.storage.v2019_06_01.operations._storage_accounts_operations.StorageAccountsOperations.list_keys')
+  @mock.patch('azure.mgmt.storage.v2019_06_01.operations._storage_accounts_operations.StorageAccountsOperations.create')
+  @typing.no_type_check
+  def testCreateStorageAccount(self, mock_create, mock_list_keys):
+    """Test that a storage account is created and its information retrieved"""
+    mock_create.return_value.result.return_value = MOCK_STORAGE_ACCOUNT
+    mock_list_keys.return_value = MOCK_LIST_KEYS
+    account_id, account_key = FAKE_ACCOUNT._CreateStorageAccount('fakename')
+    self.assertEqual('fakestorageid', account_id)
+    self.assertEqual('fake-key-value', account_key)
+
+    with self.assertRaises(ValueError):
+      _, _ = FAKE_ACCOUNT._CreateStorageAccount(
+          'fake-non-conform-name')
+
 
 class TestCommon(unittest.TestCase):
   """Test Azure common file."""
@@ -336,6 +423,66 @@ class TestCommon(unittest.TestCase):
     disk_name = common.GenerateDiskName(
         FAKE_SNAPSHOT, disk_name_prefix='prefix')
     self.assertEqual('prefix_fake_snapshot_name_f4c186ac_copy', disk_name)
+
+  @mock.patch('msrestazure.azure_active_directory.ServicePrincipalCredentials.__init__')
+  @typing.no_type_check
+  def testGetCredentials(self, mock_azure_credentials):
+    """Test that credentials are parsed correctly / found."""
+
+    mock_azure_credentials.return_value = None
+
+    # If all environment variables are defined, things should work correctly
+    os.environ['AZURE_SUBSCRIPTION_ID'] = 'fake-subscription-id'
+    os.environ["AZURE_CLIENT_ID"] = 'fake-client-id'
+    os.environ["AZURE_CLIENT_SECRET"] = 'fake-client-secret'
+    os.environ["AZURE_TENANT_ID"] = 'fake-tenant-id'
+
+    subscription_id, _ = common.GetCredentials()
+    self.assertEqual('fake-subscription-id', subscription_id)
+    mock_azure_credentials.assert_called_with(
+        'fake-client-id', 'fake-client-secret', tenant='fake-tenant-id')
+
+    # If an environment variable is missing, a RuntimeError should be raised
+    del os.environ['AZURE_SUBSCRIPTION_ID']
+    with self.assertRaises(RuntimeError):
+      _, _ = common.GetCredentials()
+      mock_azure_credentials.assert_not_called()
+
+    # If a profile name is passed to the method, then it will look for a
+    # credential file (default path being ~/.azure/credentials.json). We can
+    # set a particular path by setting the AZURE_CREDENTIALS_PATH variable.
+
+    # If the file is not a valid json file, should raise a ValueError
+    os.environ['AZURE_CREDENTIALS_PATH'] = os.path.join(
+      os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.realpath(__file__)))), STARTUP_SCRIPT)
+    with self.assertRaises(ValueError):
+      _, _ = common.GetCredentials(profile_name='foo')
+      mock_azure_credentials.assert_not_called()
+
+    # If the file is correctly formatted, then things should work correctly
+    os.environ['AZURE_CREDENTIALS_PATH'] = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.realpath(__file__)))), JSON_FILE)
+    subscription_id, _ = common.GetCredentials(
+        profile_name='test_profile_name')
+    self.assertEqual(
+        'fake-subscription-id-from-credential-file', subscription_id)
+    mock_azure_credentials.assert_called_with(
+        'fake-client-id-from-credential-file',
+        'fake-client-secret-from-credential-file',
+        tenant='fake-tenant-id-from-credential-file')
+
+    # If the profile name does not exist, should raise a ValueError
+    with self.assertRaises(ValueError):
+      _, _ = common.GetCredentials(profile_name='foo')
+      mock_azure_credentials.assert_not_called()
+
+    # If the profile name exists but there are missing entries, should raise
+    # a ValueError
+    with self.assertRaises(ValueError):
+      _, _ = common.GetCredentials(profile_name='incomplete_profile_name')
+      mock_azure_credentials.assert_not_called()
 
 
 class TestAZVirtualMachine(unittest.TestCase):
@@ -522,7 +669,3 @@ class TestForensics(unittest.TestCase):
 
 if __name__ == '__main__':
   unittest.main()
-
-  # TODO: Update testCreateDiskCopy(), add tests for
-  #  CreateDiskFromSnapshotURI(), _CreateStorageAccount, ListSubscriptionIDs,
-  #  GetCredentials
