@@ -42,9 +42,8 @@ DEFAULT_DISK_COPY_PREFIX = 'evidence'
 LOGGER = logging.getLogger()
 
 
-def GetCredentials(
-    profile_name: Optional[str] = None,
-    path: Optional[str] = None) -> Tuple[str, ServicePrincipalCredentials]:
+def GetCredentials(profile_name: Optional[str] = None
+                   ) -> Tuple[str, ServicePrincipalCredentials]:
   # pylint: disable=line-too-long
   """Get Azure credentials.
 
@@ -74,8 +73,9 @@ def GetCredentials(
 
         Note that you can specify several profiles that use the same tenantId,
         clientId and clientSecret but a different subscriptionId.
-    path (str): Optional. An absolute path to the file containing the profile
-        information. By default, look into ~/.azure/credentials.json
+        If you set the environment variable AZURE_CREDENTIALS_PATH to an
+        absolute path to the credentials file, then the library will look
+        there instead of in ~/.azure/credentials.json.
 
   Returns:
     Tuple[str, ServicePrincipalCredentials]: Subscription ID and
@@ -88,24 +88,35 @@ def GetCredentials(
   """
   # pylint: enable=line-too-long
   if not profile_name:
-    subscription_id = os.environ['AZURE_SUBSCRIPTION_ID']
-    client_id = os.environ["AZURE_CLIENT_ID"]
-    secret = os.environ["AZURE_CLIENT_SECRET"]
-    tenant = os.environ["AZURE_TENANT_ID"]
+    subscription_id = os.getenv('AZURE_SUBSCRIPTION_ID')
+    client_id = os.getenv("AZURE_CLIENT_ID")
+    secret = os.getenv("AZURE_CLIENT_SECRET")
+    tenant = os.getenv("AZURE_TENANT_ID")
+    if not (subscription_id and client_id and secret and tenant):
+      raise RuntimeError('Please make sure you defined the following '
+                         'environment variables: [AZURE_SUBSCRIPTION_ID,'
+                         'AZURE_CLIENT_ID, AZURE_CLIENT_SECRET,'
+                         'AZURE_TENANT_ID].')
     return subscription_id, ServicePrincipalCredentials(client_id,
                                                         secret,
                                                         tenant=tenant)
 
+  path = os.getenv('AZURE_CREDENTIALS_PATH')
   if not path:
     path = os.path.expanduser('~/.azure/credentials.json')
 
   if not os.path.exists(path):
     raise RuntimeError('Credential files not found. Please place it in '
                        '"~/.azure/credentials.json" or specify an absolute '
-                       'path to it.')
+                       'path to it in the AZURE_CREDENTIALS_PATH environment '
+                       'variable.')
 
   with open(path) as profiles:
-    account_info = json.load(profiles).get(profile_name)
+    try:
+      account_info = json.load(profiles).get(profile_name)
+    except ValueError as exception:
+      raise ValueError('Could not decode JSON file. Please verify the file '
+                       'format: {0:s}'.format(str(exception)))
     if not account_info:
       raise ValueError(
           'Profile name {0:s} not found in credentials file {1:s}'.format(
