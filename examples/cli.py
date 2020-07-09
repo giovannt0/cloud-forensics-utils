@@ -186,6 +186,9 @@ def Main() -> None:
                 ('--disk_type', 'The SKU name for the disk to create. '
                                 'Can be Standard_LRS, Premium_LRS, '
                                 'StandardSSD_LRS, or UltraSSD_LRS.', None),
+                ('--region', 'The region in which to create the disk copy. If '
+                             'not provided, the disk copy will be created in '
+                             'the "eastus" region.', None),
                 ('--src_profile', 'The Azure profile information to use as '
                                   'source account for the disk copy. Default '
                                   'will look into environment variables to '
@@ -204,6 +207,9 @@ def Main() -> None:
                 ('--disk_size', 'Size of disk in GB.', '50'),
                 ('--cpu_cores', 'Instance CPU core count.', '4'),
                 ('--memory_in_mb', 'Instance amount of RAM memory.', '8192'),
+                ('--region', 'The region in which to create the VM. If not '
+                             'provided, the VM will be created in the '
+                             '"eastus" region.', None),
                 ('--attach_disks', 'Comma seperated list of disk names '
                                    'to attach.', None),
                 ('--dst_profile', 'The Azure profile information to use as '

@@ -27,6 +27,7 @@ def CreateDiskCopy(
     instance_name: Optional[str] = None,
     disk_name: Optional[str] = None,
     disk_type: str = 'Standard_LRS',
+    region: Optional[str] = None,
     src_profile: Optional[str] = None,
     dst_profile: Optional[str] = None) -> 'compute.AZDisk':
   """Creates a copy of an Azure Compute Disk.
@@ -43,6 +44,8 @@ def CreateDiskCopy(
     disk_type (str): Optional. The sku name for the disk to create. Can be
           Standard_LRS, Premium_LRS, StandardSSD_LRS, or UltraSSD_LRS. The
           default value is Standard_LRS.
+    region (str): Optional. The region in which to create the disk copy. If not
+          provided, the disk will be created in the default_region (eastus).
     src_profile (str): Optional. The name of the source profile to use for the
         disk copy, i.e. the account information of the Azure account that holds
         the disk. For more information on profiles, see GetCredentials()
@@ -68,9 +71,10 @@ def CreateDiskCopy(
         'You must specify at least one of [instance_name, disk_name].')
 
   src_account = account.AZAccount(
-      resource_group_name, profile_name=src_profile)
-  dst_account = account.AZAccount(
-      resource_group_name, profile_name=(dst_profile or src_profile))
+      resource_group_name, default_region=region, profile_name=src_profile)
+  dst_account = account.AZAccount(resource_group_name,
+                                  default_region=region,
+                                  profile_name=(dst_profile or src_profile))
 
   try:
     if disk_name:
@@ -119,6 +123,7 @@ def StartAnalysisVm(
     ssh_public_key: str,
     cpu_cores: int = 4,
     memory_in_mb: int = 8192,
+    region: Optional[str] = None,
     attach_disks: Optional[List[str]] = None,
     tags: Optional[Dict[str, str]] = None,
     dst_profile: Optional[str] = None
@@ -140,6 +145,8 @@ def StartAnalysisVm(
         accessible.
     cpu_cores (int): Number of CPU cores for the analysis VM.
     memory_in_mb (int): The memory size (in MB) for the analysis VM.
+    region (str): Optional. The region in which to create the VM. If not
+        provided, the VM will be created in the default_region (eastus).
     attach_disks (List[str]): Optional. List of disk names to attach to the VM.
     tags (Dict[str, str]): Optional. A dictionary of tags to add to the
         instance, for example {'TicketID': 'xxx'}. An entry for the instance
@@ -156,6 +163,7 @@ def StartAnalysisVm(
   """
 
   az_account = account.AZAccount(resource_group_name,
+                                 default_region=region,
                                  profile_name=dst_profile)
 
   analysis_vm, created = az_account.GetOrCreateAnalysisVm(

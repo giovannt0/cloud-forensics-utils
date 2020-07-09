@@ -63,11 +63,12 @@ def CreateDiskCopy(args: 'argparse.Namespace') -> None:
   """
   print('Starting disk copy...')
   disk_copy = forensics.CreateDiskCopy(args.default_resource_group_name,
-                                       args.instance_name,
-                                       args.disk_name,
-                                       args.disk_type,
-                                       args.src_profile,
-                                       args.dst_profile)
+                                       instance_name=args.instance_name,
+                                       disk_name=args.disk_name,
+                                       disk_type=args.disk_type,
+                                       region=args.region,
+                                       src_profile=args.src_profile,
+                                       dst_profile=args.dst_profile)
   print('Done! Disk {0:s} successfully created.'.format(disk_copy.name))
 
 
@@ -93,6 +94,7 @@ def StartAnalysisVm(args: 'argparse.Namespace') -> None:
                                  args.ssh_public_key,
                                  cpu_cores=int(args.cpu_cores),
                                  memory_in_mb=int(args.memory_in_mb),
+                                 region=args.region,
                                  attach_disks=attach_disks,
                                  dst_profile=args.dst_profile)
 

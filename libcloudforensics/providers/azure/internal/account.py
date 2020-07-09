@@ -55,7 +55,7 @@ class AZAccount:
       default_resource_group_name (str): The default resource group in which to
           create new resources in.
       default_region (str): Optional. The default region to create new
-          resources in. Default is eastus.
+          resources in. If None, it will default to eastus.
       profile_name (str): Optional. The name of the profile to use for Azure
           operations. For more information on profiles, see GetCredentials()
           in libcloudforensics.providers.azure.internal.common.py. Default
@@ -192,6 +192,7 @@ class AZAccount:
   def CreateDiskFromSnapshot(
       self,
       snapshot: compute.AZSnapshot,
+      region: Optional[str] = None,
       disk_name: Optional[str] = None,
       disk_name_prefix: Optional[str] = None,
       disk_type: str = 'Standard_LRS') -> compute.AZDisk:
@@ -199,6 +200,9 @@ class AZAccount:
 
     Args:
       snapshot (AZSnapshot): Snapshot to use.
+      region (str): Optional. The region in which to create the disk. If not
+          provided, the disk will be created in the default_region associated to
+          the AZAccount object.
       disk_name (str): Optional. String to use as new disk name.
       disk_name_prefix (str): Optional. String to prefix the disk name with.
       disk_type (str): Optional. The sku name for the disk to create. Can be
@@ -215,8 +219,12 @@ class AZAccount:
     if not disk_name:
       disk_name = common.GenerateDiskName(snapshot,
                                           disk_name_prefix=disk_name_prefix)
+
+    if not region:
+      region = self.default_region
+
     creation_data = {
-        'location': snapshot.region,
+        'location': region,
         'creation_data': {
             'sourceResourceId': snapshot.resource_id,
             'create_option': DiskCreateOption.copy
@@ -246,6 +254,7 @@ class AZAccount:
       self,
       snapshot: compute.AZSnapshot,
       snapshot_uri: str,
+      region: Optional[str] = None,
       disk_name: Optional[str] = None,
       disk_name_prefix: Optional[str] = None,
       disk_type: str = 'Standard_LRS') -> compute.AZDisk:
@@ -261,6 +270,9 @@ class AZAccount:
     Args:
       snapshot (AZSnapshot): Source snapshot to use.
       snapshot_uri (str): The URI of the snapshot to copy.
+      region (str): Optional. The region in which to create the disk. If not
+          provided, the disk will be created in the default_region associated to
+          the AZAccount object.
       disk_name (str): Optional. String to use as new disk name.
       disk_name_prefix (str): Optional. String to prefix the disk name with.
       disk_type (str): Optional. The sku name for the disk to create. Can be
@@ -305,9 +317,12 @@ class AZAccount:
       disk_name = common.GenerateDiskName(snapshot,
                                           disk_name_prefix=disk_name_prefix)
 
+    if not region:
+      region = self.default_region
+
     # Create a new disk from the imported snapshot
     creation_data = {
-        'location': snapshot.region,
+        'location': region,
         'creation_data': {
             'source_uri': copied_blob.url,
             'storage_account_id': storage_account_id,
@@ -344,8 +359,10 @@ class AZAccount:
       cpu_cores: int,
       memory_in_mb: int,
       ssh_public_key: str,
+      region: Optional[str] = None,
       packages: Optional[List[str]] = None,
-      tags: Optional[Dict[str, str]] = None) -> Tuple[compute.AZVirtualMachine, bool]:  # pylint: disable=line-too-long
+      tags: Optional[Dict[str, str]] = None
+      ) -> Tuple[compute.AZVirtualMachine, bool]:
     """Get or create a new virtual machine for analysis purposes.
 
         Args:
@@ -356,6 +373,9 @@ class AZAccount:
           ssh_public_key (str): A SSH public key data to associate with the
               VM. This must be provided as otherwise the VM will not be
               accessible.
+          region (str): Optional. The region in which to create the vm. If not
+              provided, the vm will be created in the default_region
+              associated to the AZAccount object.
           packages (List[str]): Optional. List of packages to install in the VM.
           tags (Dict[str, str]): Optional. A dictionary of tags to add to the
               instance, for example {'TicketID': 'xxx'}. An entry for the
@@ -392,8 +412,11 @@ class AZAccount:
       startup_script = startup_script.replace('${packages[@]}', ' '.join(
           packages))
 
+    if not region:
+      region = self.default_region
+
     creation_data = {
-        'location': self.default_region,
+        'location': region,
         'properties': {
             'hardwareProfile': {'vmSize': instance_type},
             'storageProfile': {
@@ -408,7 +431,7 @@ class AZAccount:
                 'managedDisk': {'storageAccountType': 'Standard_LRS'},
                 'name': 'os-disk-{0:s}'.format(vm_name),
                 'diskSizeGb': boot_disk_size,
-                'createOption': 'FromImage'
+                'createOption': DiskCreateOption.from_image
             },
             'osProfile': {
                 'adminUsername': 'AzureUser',
@@ -426,7 +449,7 @@ class AZAccount:
             },
             'networkProfile': {
                 'networkInterfaces': [{'id': self._CreateNetworkInterfaceForVM(
-                    vm_name, self.default_region, force_create=True)}]
+                    vm_name, region, force_create=True)}]
             }
         }
     }  # type: Dict[str, Any]
@@ -650,11 +673,16 @@ class AZAccount:
                          '{0:s}'.format(str(exception)))
     return tuple(result)
 
-  def _CreateStorageAccount(self, storage_account_name: str) -> Tuple[str, str]:
-    """Create an account storage and returns its ID and access key.
+  def _CreateStorageAccount(self,
+                            storage_account_name: str,
+                            region: Optional[str] = None) -> Tuple[str, str]:
+    """Create a storage account and returns its ID and access key.
 
     Args:
-      storage_account_name (str): The name for the account storage.
+      storage_account_name (str): The name for the storage account.
+      region (str): Optional. The region in which to create the storage
+          account. If not provided, it will be created in the default_region
+          associated to the AZAccount object.
 
     Returns:
       Tuple[str, str]: The storage account ID and its access key.
@@ -668,8 +696,11 @@ class AZAccount:
           'Storage account name {0:s} does not comply with {1:s}'.format(
               storage_account_name, common.REGEX_ACCOUNT_STORAGE_NAME.pattern))
 
+    if not region:
+      region = self.default_region
+
     creation_data = {
-        'location': self.default_region,
+        'location': region,
         'sku': {
             'name': 'Standard_RAGRS'
         },
