@@ -397,6 +397,7 @@ class TestAccount(unittest.TestCase):
   @typing.no_type_check
   def testCreateStorageAccount(self, mock_create, mock_list_keys):
     """Test that a storage account is created and its information retrieved"""
+    # pylint: disable=protected-access
     mock_create.return_value.result.return_value = MOCK_STORAGE_ACCOUNT
     mock_list_keys.return_value = MOCK_LIST_KEYS
     account_id, account_key = FAKE_ACCOUNT._CreateStorageAccount('fakename')
@@ -406,6 +407,7 @@ class TestAccount(unittest.TestCase):
     with self.assertRaises(ValueError):
       _, _ = FAKE_ACCOUNT._CreateStorageAccount(
           'fake-non-conform-name')
+    # pylint: enable=protected-access
 
 
 class TestCommon(unittest.TestCase):
@@ -454,8 +456,8 @@ class TestCommon(unittest.TestCase):
 
     # If the file is not a valid json file, should raise a ValueError
     os.environ['AZURE_CREDENTIALS_PATH'] = os.path.join(
-      os.path.dirname(os.path.dirname(os.path.dirname(
-        os.path.realpath(__file__)))), STARTUP_SCRIPT)
+        os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.realpath(__file__)))), STARTUP_SCRIPT)
     with self.assertRaises(ValueError):
       _, _ = common.GetCredentials(profile_name='foo')
       mock_azure_credentials.assert_not_called()
