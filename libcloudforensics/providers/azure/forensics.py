@@ -86,7 +86,17 @@ def CreateDiskCopy(
         disk_to_copy.name))
     snapshot = disk_to_copy.Snapshot()
 
-    if dst_account.subscription_id not in src_account.ListSubscriptionIDs():
+    # pylint: disable=line-too-long
+    diff_account = dst_account.subscription_id not in src_account.ListSubscriptionIDs()
+    # pylint: enable=line-too-long
+    diff_region = dst_account.default_region != snapshot.region
+
+    # If the destination account is different from the source account or if the
+    # destination region is not the same as the region in which the source
+    # disk is, then we need to create the disk from a storage account in
+    # which we import the previously created snapshot (cross-region/account
+    # sharing).
+    if diff_account or diff_region:
       # Create a link to download the snapshot
       snapshot_uri = snapshot.GrantAccessAndGetURI()
       # Make a snapshot copy in the destination account from the link

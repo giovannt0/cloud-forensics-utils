@@ -286,13 +286,16 @@ class AZAccount:
       RuntimeError: If the disk could not be created.
     """
 
+    if not region:
+      region = self.default_region
+
     # Create a temporary Azure account storage to import the snapshot
     storage_account_name = hashlib.sha1(
         snapshot.resource_id.encode('utf-8')).hexdigest()[:23]
     storage_account_url = 'https://{}.blob.core.windows.net'.format(
         storage_account_name)
     storage_account_id, storage_account_access_key = self._CreateStorageAccount(
-        storage_account_name)
+        storage_account_name, region=region)
     blob_service_client = BlobServiceClient(
         account_url=storage_account_url, credential=storage_account_access_key)
 
@@ -316,9 +319,6 @@ class AZAccount:
     if not disk_name:
       disk_name = common.GenerateDiskName(snapshot,
                                           disk_name_prefix=disk_name_prefix)
-
-    if not region:
-      region = self.default_region
 
     # Create a new disk from the imported snapshot
     creation_data = {

@@ -35,7 +35,8 @@ class EndToEndTest(unittest.TestCase):
     "resource_group_name": xxx,  # required
     "instance_name": xxx,  # required
     "ssh_public_key": ssh-rsa xxx,  # required
-    "disk_name": xxx,  # optional
+    "disk_name": xxx,  # optional,
+    "dst_region": xxx  # optional
   }
 
 
@@ -59,7 +60,8 @@ class EndToEndTest(unittest.TestCase):
     cls.resource_group_name = project_info['resource_group_name']
     cls.instance_to_analyse = project_info['instance_name']
     cls.ssh_public_key = project_info['ssh_public_key']
-    cls.disk_to_copy = project_info.get('disk_name', None)
+    cls.disk_to_copy = project_info.get('disk_name')
+    cls.dst_region = project_info.get('dst_region')
     cls.az = account.AZAccount(cls.resource_group_name)
     cls.analysis_vm_name = 'new-vm-for-analysis'
     cls.analysis_vm, _ = forensics.StartAnalysisVm(cls.resource_group_name,
@@ -108,6 +110,28 @@ class EndToEndTest(unittest.TestCase):
     self._StoreDiskForCleanup(disk_copy)
 
   @typing.no_type_check
+  def testDiskCopyToOtherZone(self):
+    """End to end test on Azure.
+
+    Test copying a specific disk to a different Azure region.
+    """
+
+    if not (self.disk_to_copy and self.dst_region):
+      return
+
+    disk_copy = forensics.CreateDiskCopy(
+        self.resource_group_name,
+        disk_name=self.disk_to_copy,
+        region=self.dst_region)
+    # The disk should be present in Azure and be in self.dst_region
+    remote_disk = self.az.compute_client.disks.get(
+        disk_copy.resource_group_name, disk_copy.name)
+    self.assertIsNotNone(remote_disk)
+    self.assertEqual(disk_copy.name, remote_disk.name)
+    self.assertEqual(self.dst_region, remote_disk.location)
+    self._StoreDiskForCleanup(disk_copy)
+
+  @typing.no_type_check
   def testStartVm(self):
     """End to end test on Azure.
 
@@ -152,8 +176,7 @@ class EndToEndTest(unittest.TestCase):
     # Delete the instance
     LOGGER.info('Deleting instance: {0:s}.'.format(cls.analysis_vm.name))
     request = cls.az.compute_client.virtual_machines.delete(
-        cls.analysis_vm.resource_group_name, cls.analysis_vm.name
-    )
+        cls.analysis_vm.resource_group_name, cls.analysis_vm.name)
     while not request.done():
       sleep(5)  # Wait 5 seconds before checking vm deletion status again
     LOGGER.info('Instance {0:s} successfully deleted.'.format(
@@ -185,5 +208,3 @@ class EndToEndTest(unittest.TestCase):
 
 if __name__ == '__main__':
   unittest.main()
-
-  # TODO: Add e2e tests for cross region copies / cross subscription IDs
